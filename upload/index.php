@@ -1,6 +1,10 @@
 <?php
 
-define('ALLOWED_EXTENSIONS', ['csv', 'xls', 'zip']);
+require $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
+define('ALLOWED_EXTENSIONS', ['csv', 'xlsx', 'xls', 'zip']);
 define('UPLOAD_DIR', $_SERVER['DOCUMENT_ROOT'] . "/uploads/");
 define('SPECIFICATION_PATH', $_SERVER['DOCUMENT_ROOT'] . '/includes/specification.json');
 
@@ -30,9 +34,14 @@ function handleFileUpload($file)
 
     $upload_id = generateUploadId();
     $upload_dir = UPLOAD_DIR . $upload_id;
+    $relative_upload_dir = "uploads/" . $upload_id;
 
     if (!file_exists(SPECIFICATION_PATH)) {
         return ['error' => 'Specification file not found.'];
+    }
+
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
     }
 
     switch ($extension_check['extension']) {
@@ -48,7 +57,7 @@ function handleFileUpload($file)
                     $image_extraction_result = extractImagesFromZip($zip_file_path, json_decode($json_response['content'], true), $upload_dir);
 
                     if ($image_extraction_result['success']) {
-                        return ['success' => 'JSON file and images created and moved successfully.', 'path' => $upload_dir . '/output.json'];
+                        return ['success' => 'JSON file and images created and moved successfully.', 'path' => $relative_upload_dir . '/output.json'];
                     } else {
                         return ['error' => $image_extraction_result['error']];
                     }
@@ -65,9 +74,19 @@ function handleFileUpload($file)
 
             if ($json_response['success']) {
                 file_put_contents($upload_dir . '/output.json', $json_response['content']);
-                return ['success' => 'JSON file created successfully.', 'path' => $upload_dir . '/output.json'];
+                return ['success' => 'JSON file created successfully.', 'path' => $relative_upload_dir . '/output.json'];
             } else {
                 return ['error' => $json_response['error']];
+            }
+            break;
+
+        case 'xlsx':
+            $json_response = convert_xlsx_to_json($file['tmp_name']);
+
+            if (file_put_contents($upload_dir . '/output.json', $json_response['content']) === false) {
+                return ['error' => 'Failed to write JSON file to disk.'];
+            } else {
+                return ['success' => 'JSON file created successfully.', 'path' => $relative_upload_dir . '/output.json'];
             }
             break;
 
@@ -280,4 +299,32 @@ function isImageFile($zipFilePath, $fileName)
     }
 
     return false;
+}
+
+
+function convert_xlsx_to_json($xlsxFilePath)
+{
+    try {
+        $spreadsheet = IOFactory::load($xlsxFilePath);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray();
+
+        if (empty($rows) || !is_array($rows)) {
+            return ['success' => false, 'error' => 'No valid data found in XLSX file'];
+        }
+
+        $keys = array_shift($rows);
+        $jsonData = array_map(function ($row) use ($keys) {
+            return array_combine($keys, $row);
+        }, $rows);
+
+        $content = json_encode($jsonData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($content === false) {
+            return ['success' => false, 'error' => 'Failed to encode JSON: ' . json_last_error_msg()];
+        }
+
+        return ['success' => true, 'content' => $content];
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => 'Failed to read XLSX file: ' . $e->getMessage()];
+    }
 }

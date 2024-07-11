@@ -33,10 +33,23 @@ jQuery(function ($) {
                         return xhr;
                     },
                     success: function (response) {
+                        try {
+                            response = JSON.parse(response);
+                        } catch (e) {
+                            alert('Error parsing server response.');
+                            return;
+                        }
+
                         if (response.error) {
                             alert(response.error);
                         } else {
-                            alert(response);
+                            alert(response.success);
+                            const downloadLink = document.createElement('a');
+                            downloadLink.href = response.path;
+                            downloadLink.download = 'output.json';
+                            document.body.appendChild(downloadLink);
+                            downloadLink.click();
+                            document.body.removeChild(downloadLink);
                         }
 
                         $('.progress-bar').removeClass('bg-danger');
