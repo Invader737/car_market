@@ -1,0 +1,15 @@
+.btn:not(.loading) .spinner-border {
+    display:none;
+}
+
+.btn.loading .spinner-border {
+    display:block;
+}
+
+.btn.loading .text1 {
+    display:none;
+}
+
+#uploadBtn {
+    min-height:38px;
+}
